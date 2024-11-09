@@ -1,0 +1,14 @@
+sentence-transformers
+xformers==0.0.27.post2 --only-binary :all:
+numpy==1.22.0
+flask
+python-dotenv
+waitress
+
+# Audio text to speech
+TTS
+
+# Audio speech to text
+faster-whisper
+
+pydub
