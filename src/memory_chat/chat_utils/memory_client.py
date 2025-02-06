@@ -63,9 +63,9 @@ class MemoryClient:
         response = requests.delete(url)
         return response.json()
 
-    def search_memories(self, query):
+    def search_memories(self, query, k=10):
         url = f"{self.base_url}/search_memories"
-        params = {"q": query}
+        params = {"q": query, "k": k}
         response = requests.get(url, params=params)
         return response.json()
 
@@ -114,7 +114,6 @@ Provide a concise memory summary that explains the nature of this last communica
                 {"role": "user", "content": user_prompt},
             ],
         )
-
         return response["choices"][0]["message"]["content"]
 
     def _parse_emotional_valence(self, emotional_valence):
@@ -163,7 +162,6 @@ Provide a concise memory summary that explains the nature of this last communica
         conversation = "\n".join(
             [f"{msg['role']}: {msg['content']}" for msg in messages]
         )
-
         context = self.generate_ai_context(
             messages, system_message, human_actor, ai_actor
         )
@@ -202,13 +200,18 @@ Respond only with YAML, no other text."""
                 {"role": "user", "content": user_prompt},
             ],
         )
+        raw_content = response["choices"][0]["message"]["content"]
 
-        # Parse the YAML response
-        yaml_response = yaml.safe_load(response["choices"][0]["message"]["content"])
+        # Fix YAML issues by adding quotes around content and context fields
+        fixed_yaml = re.sub(
+            r"^(content|context): (.+)$", r'\1: "\2"', raw_content, flags=re.MULTILINE
+        )
+
+        yaml_response = yaml.safe_load(fixed_yaml)
+
         emotional_valence = self._parse_emotional_valence(
             yaml_response.get("emotional_valence", {})
         )
-
         # Add the memory using the parsed YAML data
         return self.add_memory(
             topic=yaml_response.get("content", ""),

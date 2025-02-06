@@ -26,8 +26,7 @@ from src.memory_chat.chat_utils.voice_input import VoiceInput
 from src.memory_chat.threads.tts_thread import TTSThread
 from src.memory_chat.gui.system_message_dialog import SystemMessageDialog
 from src.memory_chat.threads.response_thread import AIResponseThread
-from src.memory_chat.chat_utils.memory_client import MemoryClient
-from src.memory_chat.threads.memory_thread import MemoryThread
+from src.memory_chat.memory.memory_manager import MemoryManager
 
 
 class VoiceInputThread(QThread):
@@ -88,10 +87,10 @@ class ChatWindow(QMainWindow):
         self.allow_voice_interrupt = False
         self.is_closing = False
         self.use_local_whisper = False
-        self.use_memory = True
-        self.access_memories = False
-        self.memory_client = MemoryClient()
-        self.memory_threads = []
+        self.memory_manager = MemoryManager(
+            self.openai_client, use_memory=False, access_memories=False
+        )
+        self.max_tokens = 8192
 
         self.init_ui()
         self.load_or_create_conversation()
@@ -171,7 +170,7 @@ class ChatWindow(QMainWindow):
         # Add memory toggle action to Options menu
         self.use_memory_action = QAction("Create Memories", self)
         self.use_memory_action.setCheckable(True)
-        self.use_memory_action.setChecked(True)
+        self.use_memory_action.setChecked(False)
         self.use_memory_action.triggered.connect(self.toggle_memory)
         options_menu.addAction(self.use_memory_action)
 
@@ -204,11 +203,20 @@ class ChatWindow(QMainWindow):
         self.display_message(message, is_user=True)
         self.input_box.clear()
 
-        memory_information = None
-        if self.access_memories:
-            memory_information = self.recall_memories(message)
-
         messages = self.messages.copy()
+
+        self.messages.append(
+            {
+                "role": "user",
+                "content": message,
+                "timestamp": datetime.now().isoformat(),
+            }
+        )
+
+        memory_information = None
+        if self.memory_manager.access_memories:
+            memory_information = self.memory_manager.recall_memories(self.messages)
+            print(memory_information)
 
         if memory_information:
             messages.append(
@@ -219,6 +227,7 @@ class ChatWindow(QMainWindow):
                     "timestamp": datetime.now().isoformat(),
                 }
             )
+
         messages.append(
             {
                 "role": "user",
@@ -227,17 +236,11 @@ class ChatWindow(QMainWindow):
             }
         )
 
-        self.messages.append(
-            {
-                "role": "user",
-                "content": message,
-                "timestamp": datetime.now().isoformat(),
-            }
-        )
+        print(messages)
 
         # Create and start response thread
         self.response_thread = AIResponseThread(
-            messages, self.model_selector.currentText()
+            messages, self.model_selector.currentText(), max_tokens=self.max_tokens
         )
         self.response_thread.response_ready.connect(self.handle_ai_response)
         self.response_thread.start()
@@ -253,26 +256,16 @@ class ChatWindow(QMainWindow):
         )
 
         # Process memory if enabled
-        if self.use_memory:
-            # Clean up finished threads
-            self.memory_threads = [t for t in self.memory_threads if t.isRunning()]
-
-            # Create and start new memory thread
-            memory_thread = MemoryThread(
+        if self.memory_manager.use_memory:
+            self.memory_manager.process_conversation_memory(
                 messages=self.messages.copy(),
                 system_message=self.system_message,
                 human_actor="user",
                 ai_actor="assistant",
                 ai_persona=self.ai_persona,
                 model_name=self.model_selector.currentText(),
-                memory_client=self.memory_client,
                 openai_client=self.openai_client,
             )
-            memory_thread.finished.connect(
-                lambda: self.cleanup_memory_thread(memory_thread)
-            )
-            self.memory_threads.append(memory_thread)
-            memory_thread.start()
 
         # Add TTS playback if enabled
         if self.use_tts:
@@ -305,10 +298,13 @@ class ChatWindow(QMainWindow):
         self.chat_display.setTextCursor(cursor)
         self.chat_display.ensureCursorVisible()
 
+    def format_system_message(self, message: str):
+        return message.replace("{current_date}", datetime.now().strftime("%Y-%m-%d"))
+
     def edit_system_message(self):
         dialog = SystemMessageDialog(self.system_message, self.ai_persona, self)
         if dialog.exec():
-            self.system_message = dialog.get_message()
+            self.system_message = self.format_system_message(dialog.get_message())
             self.ai_persona = dialog.get_persona()
             # Append the new system message with timestamp
             self.messages.append(
@@ -455,15 +451,15 @@ class ChatWindow(QMainWindow):
         self.voice_input_thread.start()
         self.update_record_button_state_listening()
 
-    def cleanup_memory_thread(self, thread):
-        if thread in self.memory_threads:
-            self.memory_threads.remove(thread)
+    def toggle_memory(self, checked: bool):
+        self.memory_manager.use_memory = checked
+
+    def toggle_access_memories(self, checked: bool):
+        self.memory_manager.access_memories = checked
 
     def cleanup_before_exit(self):
         self.clear_voice_input()
-        for thread in self.memory_threads:
-            thread.wait()
-        self.memory_threads.clear()
+        self.memory_manager.cleanup()
 
     def closeEvent(self, event):
         """Handle window close event"""
@@ -478,23 +474,3 @@ class ChatWindow(QMainWindow):
 
         # Create a new conversation ID and add system message
         self.load_or_create_conversation()
-
-    def toggle_memory(self, checked: bool):
-        self.use_memory = checked
-
-    def toggle_access_memories(self, checked: bool):
-        self.access_memories = checked
-
-    def recall_memories(self, user_message: str):
-        # Placeholder for memory recall functionality
-        memories = self.memory_client.search_memories(user_message)
-
-        if memories:
-            memory_texts = []
-            for memory in memories:
-                explanation = memory["context"]["explanation"]
-                content = memory["content"]
-                memory_texts.append(f"Content: {content}\nContext: {explanation}")
-            return "\n\n".join(memory_texts)
-
-        return None

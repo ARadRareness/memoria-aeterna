@@ -27,7 +27,6 @@ class StellaEmbeddings:
 
     def similarity(self, query, doc_embeddings, k=3):
         results = self.model.similarity(query, doc_embeddings)
-        print("RESULTS", results)
         # Retrieve the position of the top k results
         top_k_indices = results.squeeze().argsort(descending=True)[:k].tolist()
         return top_k_indices

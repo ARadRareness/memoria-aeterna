@@ -82,7 +82,9 @@ class VoiceInputThread(threading.Thread):
         self.use_local_whisper = use_local_whisper
 
         if self.use_local_whisper:
-            self.model = WhisperModel("large-v2", device="cuda", compute_type="float16")
+            self.model = WhisperModel(
+                "large-v3-turbo", device="cuda", compute_type="float16"
+            )
 
         print("THREAD STARTED")
         self.daemon = True
@@ -136,10 +138,11 @@ class VoiceInputThread(threading.Thread):
 
         # Print out all available input devices
 
-        input_device = 1
+        input_device = 3
 
         for i in range(audio.get_device_count()):
             dev_info = audio.get_device_info_by_index(i)
+            # print(dev_info["name"])
             if dev_info["name"] == "Microphone (Blue Snowball)":
                 input_device = i
                 break
@@ -257,12 +260,13 @@ if __name__ == "__main__":
 
     # Create an instance of the VoiceInput class with use_local_whisper set as needed
     voice_input = VoiceInput(use_local_whisper=True)
-
     while True:
         time.sleep(0.1)
         try:
             result = voice_input.get_input()
             if result:
                 print(result)
+        except queue.Empty:  # Specifically catch queue.Empty exception
+            pass  # Silently continue
         except Exception as e:
-            pass
+            print(f"Error: {e}")

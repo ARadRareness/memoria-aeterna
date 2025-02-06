@@ -166,4 +166,5 @@ personas/
 wavs/
 
 future_features.txt
-memories.yaml
+*.yaml
+*.wav

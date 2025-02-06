@@ -7,7 +7,6 @@ Memoria Aeterna is a memory system designed for large language models, enabling 
 ### 1. Prerequisites
 First, install AMP by following the instructions at:
 https://github.com/ARadRareness/AMP.git
-```
 
 ### 2. Clone this repository
 ```bash
